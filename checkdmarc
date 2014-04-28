@@ -1,0 +1,114 @@
+#!/bin/bash
+#
+# Check DMARC
+#
+# Version 2014.04.28
+#
+# Copyright Sven Krohlas <sven@asbest-online.de>, GNU GPLv3+
+#
+# Checks all possible effective TLD names of a brand (like GMX or Yahoo)
+# for their DMARC policy.
+#
+# Requires:
+# * Internet access, obviously
+# * https://publicsuffix.org/list/effective_tld_names.dat and fetches it on demand
+# * wget
+
+if [ "$1" == "-h" ] || [ "$1" == "" ]; then
+  echo "Check DMARC"
+  echo "Checks all effective TLD subdomains of a given brand for a DMARC record and presents the results."
+  echo ""
+  echo "Usage:"
+  echo "checkdmarc <brand>"
+  echo ""
+  echo "<brand> can be a string like 'gmx or 'yahoo'."
+  echo "Temporary files are being left behind in the current working directory for debug reasons. Use"
+  echo ""
+  echo "checkdmarc -c"
+  echo ""
+  echo "for automatic cleanup."
+
+  exit
+fi
+
+if [ "$1" == "-c" ]; then
+  echo "Cleanup ..."
+  rm clean_list.txt
+  rm effective_tld_names.dat
+  rm results
+  rm queries
+  echo "... done!"
+
+  exit
+fi
+
+echo "This script is going to make several thousand DNS request. Proceed at your own risk, iff you know what you are doing."
+echo "Type 'yes' to proceed, anything else to abort."
+read confirmation
+
+if [ "$confirmation" != "yes" ]; then
+  exit
+fi
+
+
+brand=$1
+
+if [ ! -f effective_tld_names.dat ]; then
+  wget https://publicsuffix.org/list/effective_tld_names.dat
+fi
+
+# cleanup file
+grep -v "//" effective_tld_names.dat | grep -e '^$' -v > clean_list.txt
+
+
+# Create the query script. The query basically looks like "host -t TXT _dmarc.gmx.net"
+cat clean_list.txt | sed 's/^\*\.//' | sed "s/^/host -t TXT _dmarc.$brand./" > queries
+chmod +x queries
+
+
+# Run the query script, save the results
+echo -n "Running "
+echo -n "$(wc -l queries)"
+echo ", this may take a while ..."
+./queries > results
+
+
+# Create statistics
+echo -n "SERVFAIL: "
+grep -c "SERVFAIL" results
+
+echo -n "connection timed out; no servers could be reached: "
+grep -c "connection timed out; no servers could be reached" results
+
+echo -n "has no TXT record: "
+grep -c "has no TXT record" results
+
+echo -n "NXDOMAIN: "
+grep -c "NXDOMAIN" results 
+
+echo -n "is an alias for: "
+grep -c "is an alias for" results
+
+echo -n "p=none: "
+grep -c "p=none" results
+
+echo -n "p=quarantine: "
+grep -c "p=quarantine" results
+
+echo -n "p=reject: "
+grep -c "p=reject" results
+
+
+# Print important results
+echo ""
+echo "p=none details:"
+grep "p=none" results
+
+echo ""
+echo "p=quarantine details:"
+grep "p=quarantine" results
+
+echo ""
+echo "p=reject details:"
+grep "p=reject" results
+
