@@ -2,7 +2,7 @@
 #
 # Check DMARC
 #
-# Version 2014.04.28
+# Version 2014.05.11
 #
 # Copyright Sven Krohlas <sven@asbest-online.de>, GNU GPLv3+
 #
@@ -33,6 +33,7 @@ fi
 
 if [ "$1" == "-c" ]; then
   echo "Cleanup ..."
+  rm tmp_list.txt
   rm clean_list.txt
   rm effective_tld_names.dat
   rm results
@@ -57,12 +58,14 @@ if [ ! -f effective_tld_names.dat ]; then
   wget https://publicsuffix.org/list/effective_tld_names.dat
 fi
 
-# cleanup file
-grep -v "//" effective_tld_names.dat | grep -e '^$' -v > clean_list.txt
+# cleanup file, step 1: newlines and comments
+grep -v "//" effective_tld_names.dat | grep -e '^$' -v > tmp_list.txt
 
+# cleanup file, step 2: entries starting with '*.'
+sed 's/^\*\.//' tmp_list.txt > clean_list.txt
 
 # Create the query script. The query basically looks like "host -t TXT _dmarc.gmx.net"
-cat clean_list.txt | sed 's/^\*\.//' | sed "s/^/host -t TXT _dmarc.$brand./" > queries
+cat clean_list.txt | sed "s/^/host -t TXT _dmarc.$brand./" > queries
 chmod +x queries
 
 
